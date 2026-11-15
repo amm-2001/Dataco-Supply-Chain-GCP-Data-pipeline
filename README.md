@@ -20,6 +20,7 @@ The project takes a real, public supply-chain dataset (180,519 order lines, 53 c
 - a **Looker Studio dashboard** and **machine learning models** trained with SQL,
 - **nightly automation**, running end to end in about 6.5 minutes.
 
+📊 **Original Dataset from Kaggle:** [Dataco Supplychain for Big Data Analysis](https://www.kaggle.com/datasets/shashwatwork/dataco-smart-supply-chain-for-big-data-analysis)
 
 ---
 
