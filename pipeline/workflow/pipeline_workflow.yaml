@@ -1,0 +1,160 @@
+# =============================================================================
+# pipeline_workflow.yaml - the pipeline as a Cloud Workflow, so it can run on
+# a schedule without you (Cloud Scheduler starts it every night at 02:00).
+#
+# It does the same as run_pipeline.sh:
+#   check_cloud_sql -> extract (Job 1) -> transform (Job 2) -> run_checks
+# Each step WAITS for the previous one; if any step fails, the workflow stops
+# and its execution is marked FAILED in the console.
+#
+# Settings (bucket, IPs, names...) come from environment variables that
+# deploy_workflow.sh sets from config.sh: sys.get_env("NAME") reads them.
+# ${ ... } means "calculate this expression".
+# =============================================================================
+main:
+  steps:
+    - init:
+        assign:
+          - project: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}  # built in, always set
+          - region: ${sys.get_env("REGION")}
+          - bucket: ${sys.get_env("BUCKET")}
+          - code: ${"gs://" + bucket + "/code/"}
+          - parent: ${"projects/" + project + "/locations/" + region}
+          - subnet_uri: ${"projects/" + project + "/regions/" + region + "/subnetworks/" + sys.get_env("SUBNET")}
+          - spark_sa: ${sys.get_env("SPARK_SA_EMAIL")}
+          - runtime: ${sys.get_env("SPARK_RUNTIME")}
+          - sql_instance: ${sys.get_env("SQL_INSTANCE")}
+          # Same values as SPARK_PROPERTIES in config.sh
+          - spark_properties:
+              spark.driver.cores: "4"
+              spark.executor.cores: "4"
+              spark.executor.instances: "2"
+              spark.dynamicAllocation.maxExecutors: "2"
+              spark.sql.session.timeZone: "UTC"
+
+    # Stop early with a clear message if Cloud SQL was stopped to save money.
+    - check_cloud_sql:
+        steps:
+          - get_instance:
+              call: googleapis.sqladmin.v1.instances.get
+              args:
+                project: ${project}
+                instance: ${sql_instance}
+              result: instance
+          - stop_if_off:
+              switch:
+                - condition: ${instance.settings.activationPolicy == "NEVER"}
+                  raise: ${"Cloud SQL is stopped. Start it with gcloud sql instances patch " + sql_instance + " --activation-policy=ALWAYS"}
+
+    # Job 1. run_batch (at the bottom of this file) starts the Spark batch and
+    # waits until it ends; the result is the finished batch.
+    - extract:
+        call: run_batch
+        args:
+          parent: ${parent}
+          batch_id: ${"extract-" + string(int(sys.now()))}   # unique name per run
+          body:
+            pysparkBatch:
+              mainPythonFileUri: ${code + "extract_mysql_to_gcs.py"}
+              jarFileUris:
+                - ${sys.get_env("MYSQL_JAR")}
+              args:
+                - ${"--project=" + project}
+                - ${"--bucket=" + bucket}
+                - ${"--mysql-host=" + sys.get_env("MYSQL_HOST")}
+            runtimeConfig:
+              version: ${runtime}
+              properties: ${spark_properties}
+            environmentConfig:
+              executionConfig:
+                serviceAccount: ${spark_sa}
+                subnetworkUri: ${subnet_uri}
+        result: extract_batch
+
+    # Stop unless Spark reported success.
+    - check_extract:
+        switch:
+          - condition: ${extract_batch.state != "SUCCEEDED"}
+            raise: ${"Job 1 (extract) ended in state " + extract_batch.state}
+
+    - transform:
+        call: run_batch
+        args:
+          parent: ${parent}
+          batch_id: ${"transform-" + string(int(sys.now()))}
+          body:
+            pysparkBatch:
+              mainPythonFileUri: ${code + "transform_to_warehouse.py"}
+              args:
+                - ${"--project=" + project}
+                - ${"--bucket=" + bucket}
+            runtimeConfig:
+              version: ${runtime}
+              properties: ${spark_properties}
+            environmentConfig:
+              executionConfig:
+                serviceAccount: ${spark_sa}
+                subnetworkUri: ${subnet_uri}
+        result: transform_batch
+
+    - check_transform:
+        switch:
+          - condition: ${transform_batch.state != "SUCCEEDED"}
+            raise: ${"Job 2 (transform) ended in state " + transform_batch.state}
+
+    # The checks are stored in BigQuery as a procedure (made by
+    # deploy_workflow.sh from tests/data_quality_checks.sql). jobs.insert
+    # waits for the query and fails this step if any ASSERT fails.
+    - run_checks:
+        call: googleapis.bigquery.v2.jobs.insert
+        args:
+          projectId: ${project}
+          body:
+            configuration:
+              query:
+                query: "CALL dataco_dw.run_quality_checks()"
+                useLegacySql: false
+            jobReference:
+              projectId: ${project}
+              location: "US"
+        result: checks_job
+
+    - done:
+        return: "Pipeline finished successfully"
+
+# =============================================================================
+# run_batch - start one serverless Spark batch and wait until it ends.
+# Workflows has no ready-made connector for Spark batches, so this calls the
+# Dataproc REST API directly (the same API gcloud dataproc batches uses):
+#   1. POST .../batches         start the batch
+#   2. wait 30 seconds, then GET .../batches/ID to read its state
+#   3. still PENDING or RUNNING? go back to 2; otherwise return the batch
+# auth: OAuth2 = call the API as the workflow's service account (workflow-sa).
+# =============================================================================
+run_batch:
+  params: [parent, batch_id, body]
+  steps:
+    - submit:
+        call: http.post
+        args:
+          url: ${"https://dataproc.googleapis.com/v1/" + parent + "/batches?batchId=" + batch_id}
+          auth:
+            type: OAuth2
+          body: ${body}
+    - wait:
+        call: sys.sleep
+        args:
+          seconds: 30
+    - check:
+        call: http.get
+        args:
+          url: ${"https://dataproc.googleapis.com/v1/" + parent + "/batches/" + batch_id}
+          auth:
+            type: OAuth2
+        result: batch
+    - still_running:
+        switch:
+          - condition: ${batch.body.state == "PENDING" or batch.body.state == "RUNNING" or batch.body.state == "CANCELLING"}
+            next: wait
+    - finished:
+        return: ${batch.body}
