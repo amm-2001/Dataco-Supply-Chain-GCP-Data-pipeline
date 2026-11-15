@@ -1,6 +1,6 @@
 # End-to-End Data Pipeline on Google Cloud
 
-A nightly, fully automated data pipeline on Google Cloud: from a MySQL database to a Parquet data lake, a BigQuery star schema, a Looker Studio dashboard and a BigQuery ML model.
+A nightly, fully automated data pipeline on Google Cloud: from a MySQL database to a Parquet data lake, a BigQuery star schema, and a BigQuery ML model.
 
 ![Google Cloud](https://img.shields.io/badge/Google_Cloud-4285F4?logo=googlecloud&logoColor=white)
 ![Apache Spark](https://img.shields.io/badge/Apache_Spark-E25A1C?logo=apachespark&logoColor=white)
