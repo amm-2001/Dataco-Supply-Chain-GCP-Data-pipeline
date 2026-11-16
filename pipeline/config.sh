@@ -32,7 +32,7 @@ ETL_USER="etl_reader"         # read-only MySQL user that Spark logs in with
 SECRET_NAME="mysql-etl-reader-password"
 # Cloud SQL's PRIVATE IP address, the one Spark connects to. After chapter 5,
 # replace the placeholder with the PRIVATE address that 06_cloud_sql.sh prints.
-MYSQL_HOST="10.80.0.3"
+MYSQL_HOST="Write Cloud SQL Private IP Here"
 
 # --- Service accounts (robot identities) --------------------------------------
 SPARK_SA="spark-etl-sa"       # runs the Spark jobs
