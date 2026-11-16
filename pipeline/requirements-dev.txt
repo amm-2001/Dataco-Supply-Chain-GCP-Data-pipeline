@@ -1,4 +1,4 @@
-# Tools for testing the pipeline code on your own machine / Cloud Shell.
+# Tools for testing the pipeline code on your the local machine / Cloud Shell.
 # pyspark must match the Spark version of serverless runtime 3.0 (Spark 4.0).
 pyspark>=4.0,<4.1
 pytest
