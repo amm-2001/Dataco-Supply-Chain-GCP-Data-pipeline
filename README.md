@@ -17,7 +17,7 @@ The project takes a real, public supply-chain dataset (180,519 order lines, 53 c
 - a **normalized MySQL database** on Cloud SQL, designed from one flat CSV,
 - **serverless Spark jobs** that extract the data incrementally and transform it,
 - a **BigQuery warehouse** modeled as a star schema and checked on every load,
-- a **Looker Studio dashboard** and **machine learning models** trained with SQL,
+- **Machine learning models** trained with SQL in BigQuery ML,
 - **nightly automation**, running end to end in about 6.5 minutes.
 
 📊 **Original Dataset from Kaggle:** [Dataco Supplychain for Big Data Analysis](https://www.kaggle.com/datasets/shashwatwork/dataco-smart-supply-chain-for-big-data-analysis)
