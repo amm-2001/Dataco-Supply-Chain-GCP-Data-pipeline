@@ -181,11 +181,3 @@ Everything runs from **Cloud Shell**; nothing needs to be installed locally.
 4. Deploy the nightly workflow: `bash workflow/deploy_workflow.sh`
 5. Train and evaluate the models: `bash ml/train_model.sh`
 6. When you are finished, remove everything: `bash cleanup.sh`
-
-> 💡 Stop the Cloud SQL instance between sessions: it is billed for every hour it runs. The whole project cost about **$10–25** of cloud credit.
-
----
-
-## Author
-
-**Abdulrahman Almousa**
